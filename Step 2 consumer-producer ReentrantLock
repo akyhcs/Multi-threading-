@@ -1,0 +1,82 @@
+Using multiple Condition objects with a ReentrantLock is one of the most powerful features of the java.util.concurrent package. It allows you to create specialized waiting rooms for different types of threads.
+In a standard synchronized block, you only have one waiting room. If a producer finishes its work, it calls notifyAll(), which wakes up everyone—including other producers who might not be able to do anything yet. This causes "thread contention" and wastes CPU cycles.
+With ReentrantLock and Condition, you can wake up only the threads that are actually ready to work.
+The "Bounded Buffer" Example (Producer-Consumer)
+Imagine a warehouse with limited space (a buffer).
+ * Producers must wait if the warehouse is Full.
+ * Consumers must wait if the warehouse is Empty.
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
+
+public class BoundedBuffer<T> {
+    private final T[] items;
+    private int putPtr, takePtr, count;
+
+    private final Lock lock = new ReentrantLock();
+    
+    // Waiting room #1: For Producers waiting for space
+    private final Condition notFull = lock.newCondition();
+    
+    // Waiting room #2: For Consumers waiting for items
+    private final Condition notEmpty = lock.newCondition();
+
+    @SuppressWarnings("unchecked")
+    public BoundedBuffer(int capacity) {
+        items = (T[]) new Object[capacity];
+    }
+
+    public void put(T item) throws InterruptedException {
+        lock.lock();
+        try {
+            // While the warehouse is full, producers wait in the 'notFull' room
+            while (count == items.length) {
+                notFull.await(); 
+            }
+            
+            items[putPtr] = item;
+            if (++putPtr == items.length) putPtr = 0;
+            count++;
+
+            // SUCCESS! We added an item. 
+            // Signal ONLY the consumers (who are waiting in the 'notEmpty' room).
+            notEmpty.signal(); 
+            
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    public T take() throws InterruptedException {
+        lock.lock();
+        try {
+            // While the warehouse is empty, consumers wait in the 'notEmpty' room
+            while (count == 0) {
+                notEmpty.await();
+            }
+
+            T item = items[takePtr];
+            if (++takePtr == items.length) takePtr = 0;
+            count--;
+
+            // SUCCESS! We removed an item and created space.
+            // Signal ONLY the producers (who are waiting in the 'notFull' room).
+            notFull.signal();
+            
+            return item;
+        } finally {
+            lock.unlock();
+        }
+    }
+}
+
+Why this is a "Production-Grade" Pattern
+ * Eliminates the "Thundering Herd": When a take() happens, we call notFull.signal(). This wakes up exactly one producer. In a synchronized version, notifyAll() would wake up every single producer and every other consumer, creating a massive spike in CPU usage as they all fight for the lock again.
+ * Specific Signaling: You aren't just saying "Something changed!" You are saying "Specifically, there is now space available" or "Specifically, there is now an item to eat."
+ * Efficiency with Virtual Threads: When a virtual thread calls await(), it is unmounted from the carrier thread. This allows you to have thousands of producers and consumers waiting "for free" without consuming OS resources.
+Important Rules for Condition
+ * Always use a while loop: Never use if with await(). This protects against "spurious wakeups" where a thread might wake up even if the condition hasn't been met.
+ * Must hold the lock: You cannot call await() or signal() unless you have already called lock.lock(). If you don't, you'll get an IllegalMonitorStateException.
+ * Finally block: Always unlock in a finally block to ensure the warehouse "door" isn't left locked forever if an error occurs.
+Would you like me to help you integrate this Bounded Buffer into your Salesforce orchestrator to act as a "queue" between your data fetching and your API pushing?
+
