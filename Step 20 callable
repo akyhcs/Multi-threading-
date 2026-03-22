@@ -1,0 +1,72 @@
+In modern Java, if you need a thread to perform a task and return a result (like a status code or a JSON response from Salesforce), you use the Callable interface instead of Runnable.
+Since you want to avoid lambda expressions, we will use a traditional inner class (or a separate class) that implements Callable<V>. When you submit this to an ExecutorService, it returns a Future object—which is essentially a "claim check" you can use to get your result later.
+The Callable Implementation (No Lambdas)
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+
+// 1. Define the Task using Callable
+// The <String> defines the type of result this thread will return
+class SalesforceSyncTask implements Callable<String> {
+    private final int batchId;
+
+    public SalesforceSyncTask(int batchId) {
+        this.batchId = batchId;
+    }
+
+    @Override
+    public String call() throws Exception {
+        System.out.println("Starting Batch " + batchId + " on " + Thread.currentThread().getName());
+        
+        // Simulate a long-running Salesforce API call
+        Thread.sleep(2000); 
+        
+        // Return a result instead of just finishing
+        return "Batch " + batchId + " Successfully Synchronized";
+    }
+}
+
+public class Main {
+    public static void main(String[] args) {
+        // 2. Create the Executor Service
+        ExecutorService executor = Executors.newFixedThreadPool(3);
+
+        // 3. Create the task object
+        SalesforceSyncTask task = new SalesforceSyncTask(101);
+
+        System.out.println("Submitting task to Salesforce...");
+
+        // 4. Submit returns a 'Future' (The promise of a result)
+        Future<String> futureResult = executor.submit(task);
+
+        // While the thread is working, the Main thread can do other things!
+        System.out.println("Main thread is free to do other work...");
+
+        try {
+            // 5. Use .get() to retrieve the result. 
+            // Warning: This line will block (wait) until the thread finishes!
+            String finalResponse = futureResult.get(); 
+            
+            System.out.println("RESULT RECEIVED: " + finalResponse);
+            
+        } catch (InterruptedException | ExecutionException e) {
+            System.err.println("Task failed: " + e.getMessage());
+        } finally {
+            executor.shutdown();
+        }
+    }
+}
+
+Key Differences: Runnable vs Callable
+| Feature | Runnable | Callable |
+|---|---|---|
+| Method | run() | call() |
+| Return Value | void (Nothing) | Generic <V> (Any Object) |
+| Exceptions | Must handle internally. | Can throw checked exceptions. |
+| Executor Call | executor.execute() or submit() | executor.submit() |
+Pro-Tip for your 180 Batches
+If you submit 180 Callable tasks, you will get back a List<Future<String>>. You can then loop through that list and call .get() on each one. This ensures that your main program waits until every single batch has confirmed its success before moving to the next step of your pipeline.
+Would you like me to show you how to use invokeAll to submit all 180 tasks at once and process the list of results?
+
