@@ -1,0 +1,76 @@
+While synchronized is the "easy" way to handle concurrency, it has significant architectural limitations. Conversely, the Lock interface is powerful but introduces human-error risks.
+Here is a strict breakdown of the weaknesses of both, with examples to illustrate why these issues matter in real-world applications.
+Weaknesses of synchronized (The "Rigid" Approach)
+The primary weakness of synchronized is its lack of flexibility. It is a "binary" tool: you either have the lock, or you are stuck waiting forever.
+1. Indefinite Blocking (No Timeouts)
+A thread waiting for a synchronized block cannot be told to "give up" after a certain amount of time. If the thread holding the lock hangs, everyone else hangs forever.
+Example:
+// Thread A gets the lock and starts a 10-hour API call
+synchronized(lock) {
+    callSlowService(); 
+}
+
+// Thread B is now stuck. It cannot say "Wait 5 seconds then fail."
+// It will wait forever, potentially freezing your UI or exhausting your thread pool.
+synchronized(lock) {
+    doQuickWork();
+}
+
+2. Lack of "Fairness" (Starvation)
+synchronized does not guarantee the order in which threads acquire the lock. A "greedy" thread can jump the line, leaving other threads waiting indefinitely. This is called Thread Starvation.
+3. Rigid Block Scoping
+The lock must be released in the same method and block where it was acquired. You cannot acquire a lock in startTransaction() and release it in endTransaction().
+Example:
+public void methodA() {
+    synchronized(lock) {
+        // You MUST unlock right here at the '}'
+        // You can't "hand over" the lock to another method.
+    }
+}
+
+4. Limited Notification (The "Wait Set" Problem)
+With synchronized, you only have one "waiting room" per object (wait() and notifyAll()). You cannot wake up a specific group of threads; you have to wake up everyone, which is inefficient.
+Example:
+In a Producer/Consumer queue, if the queue is empty, you want to wake up Producers. With synchronized, you call notifyAll(), which wakes up both Producers and other Consumers, leading to unnecessary CPU "thundering herds."
+5. Carrier Thread Pinning (The Virtual Thread Killer)
+As we discussed, this is the modern weakness. If a Virtual Thread hits a synchronized block and performs I/O, it "pins" the OS thread. This prevents the JVM from scaling to millions of threads.
+Weaknesses of the Lock Interface (The "Manual" Approach)
+The weaknesses of Lock (like ReentrantLock) aren't about what it can't do, but rather about the risk it introduces to the developer.
+1. The "Forgot to Unlock" Danger
+This is the #1 weakness. Because unlocking is manual, if you forget to put unlock() in a finally block, the lock is held forever, and your application will eventually deadlock.
+Example of a Bug:
+public void process() {
+    lock.lock();
+    if (someCondition) {
+        return; // ERROR: Method exits, but lock is NEVER released!
+    }
+    lock.unlock();
+}
+
+2. Increased Boilerplate and Complexity
+synchronized is a single keyword. Lock requires an instance variable, a try block, and a finally block. This makes the code harder to read and easier to mess up.
+Example:
+// synchronized is 1 line.
+// Lock is at least 6-7 lines of "ceremony" code.
+lock.lock();
+try {
+    // work
+} finally {
+    lock.unlock();
+}
+
+3. No Implicit "Structure"
+Because lock() and unlock() are just method calls, it’s possible to accidentally unlock a lock from the wrong thread or try to unlock a lock that isn't held, leading to IllegalMonitorStateException. synchronized handles all of this "state tracking" for you automatically.
+Strict Comparison Table
+| Weakness | synchronized | Lock Interface |
+|---|---|---|
+| Deadlock Risk | Low (Automatic release) | High (Manual release required) |
+| Scalability | Low (Pins Virtual Threads) | High (Supports unmounting) |
+| Control | None (Can't check if lock is free) | High (tryLock exists) |
+| Starvation | Common (No fairness) | Rare (Supports "Fair" mode) |
+| Readability | High (Clean) | Low (Verbose boilerplate) |
+Summary Recommendation
+ * Use synchronized only for very simple, fast, in-memory operations where you don't need to worry about timeouts or Virtual Thread pinning.
+ * Use Lock for all I/O-bound work (like your Salesforce API calls), when you need timeouts, or when you are using Java 21+ Virtual Threads.
+Would you like me to create a Unit Test example that demonstrates exactly how tryLock() prevents a deadlock where synchronized would fail?
+
