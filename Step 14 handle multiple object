@@ -1,0 +1,43 @@
+You have spotted a very common and dangerous mistake in multi-threaded programming!
+Whether the locking mechanism works depends entirely on how many Display objects you create in your main method.
+1. When it WORKS (Shared Object)
+If you create one Display object and pass it to both threads, it works perfectly.
+ * Why? Both threads are looking at the exact same lock instance inside that single Display object. When Thread A grabs the key, Thread B sees that the door is locked because they are standing at the same door.
+Display commonDisplay = new Display(); // Only ONE lock created here
+Thread t1 = new Thread(new WishTask(commonDisplay, "Dhoni"));
+Thread t2 = new Thread(new WishTask(commonDisplay, "Yuvraj"));
+
+2. When it FAILS (Separate Objects)
+If you create two Display objects, the locking mechanism will not work. Each thread will print "Good Morning" at the same time, and the output will be jumbled.
+ * Why? Each new Display() creates a new ReentrantLock.
+ * Thread A grabs the key to Lock A.
+ * Thread B grabs the key to Lock B.
+ * Since they are using different keys for different doors, they both enter their respective wish methods simultaneously. They don't even know the other thread exists!
+// ERROR: Two different locks created!
+Thread t1 = new Thread(new WishTask(new Display(), "Dhoni")); 
+Thread t2 = new Thread(new WishTask(new Display(), "Yuvraj"));
+
+3. How to make the Lock "Global" (The static Fix)
+If you want the locking to work even if someone creates multiple Display objects, you must make the lock static.
+A static variable belongs to the Class, not the individual object. There will only be one lock for the entire application, no matter how many times you call new Display().
+class Display {
+    // Adding 'static' makes this a "Global" lock for all Display objects
+    private static final ReentrantLock lock = new ReentrantLock();
+
+    public void wish(String name) {
+        lock.lock();
+        try {
+            // ... loop logic ...
+        } finally {
+            lock.unlock();
+        }
+    }
+}
+
+Summary Comparison
+| Lock Type | Logic | Result |
+|---|---|---|
+| Instance Lock (No static) | private final Lock lock | Works ONLY if threads share one Display object. |
+| Class Lock (static) | private static final Lock lock | Works ALWAYS, even if threads have different Display objects. |
+In your Salesforce project, are you planning to have one "Manager" object that everyone talks to, or will you be creating new service objects for every batch?
+
