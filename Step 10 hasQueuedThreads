@@ -1,0 +1,41 @@
+These two methods are your "window" into the waiting room. While isHeldByCurrentThread looks at you, these methods look at everyone else who is stuck outside the door waiting for you to finish.
+In your Salesforce orchestrator, these are high-value diagnostics. If your 180 batches are stalling, these methods tell you exactly how backed up the system is.
+1. hasQueuedThreads()
+This is a simple boolean check. It returns true if there is at least one thread currently waiting to acquire the lock.
+ * The Analogy: You are inside the private restroom. You look at the "Occupied" sign sensor to see if anyone is standing in the hallway waiting for their turn.
+ * Use Case: You can use this to decide if a thread should do "extra" optional work. If hasQueuedThreads() is true, the current thread should finish as fast as possible and unlock() to let the next person in.
+lock.lock();
+try {
+    doPrimaryTask();
+    
+    // If no one is waiting, I can take my time with cleanup.
+    // If people ARE waiting, I'll skip the optional cleanup to save time.
+    if (!lock.hasQueuedThreads()) {
+        doOptionalCleanup();
+    }
+} finally {
+    lock.unlock();
+}
+
+2. getQueuedThreads()
+This is a protected method that returns a Collection<Thread>. Because it is protected, you usually only see it if you create your own subclass of ReentrantLock. However, it is the "Big Brother" of monitoring.
+ * The Analogy: You open the door slightly and look at the faces of everyone waiting in line. You can see their names and IDs.
+ * What it tells you: It gives you the actual list of Thread objects that are currently blocked.
+3. getQueueLength() (The Public Alternative)
+Since getQueuedThreads() is protected, most developers use getQueueLength() instead. It returns an integer representing the total number of threads waiting.
+ * Use Case: Monitoring and Alerting. If you are processing those 180 batches and you see getQueueLength() hit 50, it means your Salesforce API is responding so slowly that a massive "bottleneck" is forming. You could use this to trigger an alert or to stop sending new batches.
+int waiters = lock.getQueueLength();
+if (waiters > 20) {
+    System.out.println("ALERT: High contention! " + waiters + " threads are blocked.");
+}
+
+4. Summary Comparison
+| Method | Returns | Meaning |
+|---|---|---|
+| hasQueuedThreads() | boolean | Is anyone waiting? (Yes/No) |
+| getQueueLength() | int | How many people are waiting? (Count) |
+| getQueuedThreads() | Collection | Who specifically is waiting? (List) |
+Important Note on Precision
+These methods provide an estimate only. Because threads can time out (via tryLock) or be interrupted (via lockInterruptibly) at any millisecond, the number of people in the "waiting room" can change while the method is still calculating the result. Use them for logging and monitoring, but never for critical business logic.
+Would you like me to show you how to create a "Monitoring Thread" that prints out the queue length every 5 seconds so you can watch your Salesforce sync in real-time?
+
