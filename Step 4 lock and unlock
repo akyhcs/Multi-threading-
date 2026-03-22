@@ -1,0 +1,90 @@
+At its simplest level, Locking and Unlocking are the mechanisms Java uses to ensure that only one thread can touch a specific piece of data or code at a time.
+Think of a Lock as a "Physical Key" to a single-person restroom.
+1. The Real-World Analogy: The Restroom
+Imagine a busy office with one private restroom.
+ * The Lock: There is a sign on the handle. When someone enters, they turn the deadbolt.
+ * The Wait: If you arrive and the door is locked, you don't just disappear; you stand in the hallway and wait until the door opens.
+ * The Unlock: When the person inside finished, they turn the deadbolt and walk out. The door is now "Available."
+ * The Next Person: The first person in line grabs the handle, enters, and immediately locks it behind them.
+2. The Technical Workflow
+In your Java code, the process follows three strict steps:
+A. The lock() (Acquisition)
+When a thread calls lock.lock(), it is checking the "Door."
+ * If the lock is free, the thread takes ownership and continues executing the code.
+ * If the lock is held by another thread, the current thread "pauses" (blocks). It stays there until the owner releases it.
+B. The "Critical Section" (The Work)
+This is the code between the lock and unlock. This is where you do things that aren't safe for multiple threads, like:
+ * Updating a counter++.
+ * Adding an item to a List.
+ * Writing to a shared file.
+C. The unlock() (Release)
+When the thread calls lock.unlock(), it "drops the key." This immediately notifies the threads waiting in line that the "Room" is now free.
+3. Why do we need them? (The Race Condition)
+If you don't use a lock, you get a Race Condition.
+Imagine two threads both try to increment a variable count = 10 at the exact same time:
+ * Thread A reads 10.
+ * Thread B reads 10.
+ * Thread A adds 1 and writes 11.
+ * Thread B adds 1 and writes 11.
+ * The Result: You expect 12, but you got 11 because one update was "stepped on."
+By using lock() and unlock(), you force them to take turns:
+ * Thread A locks, reads 10, writes 11, and unlocks.
+ * Thread B was waiting. Now it locks, reads 11, writes 12, and unlocks.
+4. The Golden Rule of Locking
+In Java, you must always wrap your unlock in a finally block. If your code throws an error (Exception) while it has the lock, and you don't have a finally block, the lock will never be released.
+> The "Restroom" would be locked forever, even though nobody is inside!
+> 
+lock.lock();
+try {
+    // Critical Section
+    int result = 10 / 0; // This throws an error!
+} finally {
+    // This runs NO MATTER WHAT, ensuring the door is opened.
+    lock.unlock(); 
+}
+
+Would you like me to show you a "Live" example of a Race Condition where the numbers come out wrong because of missing locks?
+
+
+Yes, you absolutely can! In fact, that is exactly why it is called a ReentrantLock.
+The word "Reentrant" literally means a thread can "re-enter" a lock it already owns. If Java didn't allow this, a thread would actually deadlock itself the moment it tried to call a second method that required the same lock.
+How it Works: The "Hold Count"
+Inside the ReentrantLock object, there is a counter.
+ * When you call lock() the first time, the counter becomes 1.
+ * When the same thread calls lock() again, the counter becomes 2.
+ * Every time you call unlock(), the counter goes down by 1.
+ * The lock is only released for other threads when the counter hits 0.
+A Real-World Example: Recursive Methods
+Imagine you have a method that calls itself (recursion). If you couldn't lock multiple times, the second call would hang forever.
+private final ReentrantLock lock = new ReentrantLock();
+
+public void countdown(int n) {
+    lock.lock(); // Increases hold count
+    try {
+        System.out.println("Count: " + n + " | Hold Count: " + lock.getHoldCount());
+        if (n > 0) {
+            countdown(n - 1); // Recursive call re-enters the lock
+        }
+    } finally {
+        lock.unlock(); // Decreases hold count
+    }
+}
+
+If you ran countdown(3), the hold count would climb to 4, then slowly drop back to 0 as the methods finish.
+The "Golden Rule" of Multiple Locking
+For every lock(), there must be a matching unlock().
+If you lock three times but only unlock twice, the "door" is still locked. No other thread will ever be able to enter, and your application will eventually grind to a halt.
+| Action | Current State | Hold Count | Can others enter? |
+|---|---|---|---|
+| lock.lock() | Thread A owns it | 1 | No |
+| lock.lock() | Thread A owns it | 2 | No |
+| lock.unlock() | Thread A owns it | 1 | No |
+| lock.unlock() | Free | 0 | Yes |
+Why is this useful for your Salesforce Project?
+Sometimes you might have a "Main Service" that locks a batch to process it, but that service calls a "Logging Utility" that also tries to lock the same batch to record the status.
+Because of reentrancy, your code won't "trip over its own feet." It recognizes that the thread already has the key and just lets it through.
+> Fun Fact: The standard synchronized keyword in Java is also reentrant! If it wasn't, almost every complex Java application would have crashed years ago.
+> 
+Would you like me to show you what happens if two different threads try to lock at the same time versus the same thread locking twice?
+
+
