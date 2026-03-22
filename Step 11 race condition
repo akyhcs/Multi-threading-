@@ -1,0 +1,60 @@
+I’ve transcribed the logic from your handwritten notes into a clean, working Java program. Based on your code, you are demonstrating thread synchronization (or the lack of it) by having two threads share a single Display object to call the wish method.
+Here is the implementation with the Main class to start the threads:
+class Display {
+    // Note: If you add 'synchronized' here, the output will be orderly.
+    // Without it, the threads will overlap (race condition).
+    public void wish(String name) {
+        for (int i = 0; i < 10; i++) {
+            System.out.print("Good Morning: ");
+            try {
+                Thread.sleep(2000); // 2-second delay as per your notes
+            } catch (InterruptedException e) {
+                System.out.println("Thread interrupted");
+            }
+            System.out.println(name);
+        }
+    }
+}
+
+class MyThread extends Thread {
+    Display d;
+    String name;
+
+    // Constructor to initialize Display object and the name
+    MyThread(Display d, String name) {
+        this.d = d;
+        this.name = name;
+    }
+
+    public void run() {
+        d.wish(name);
+    }
+}
+
+public class Main {
+    public static void main(String[] args) {
+        // 1. Create the shared resource
+        Display d = new Display();
+
+        // 2. Create two threads sharing the same Display object
+        MyThread t1 = new MyThread(d, "Dhoni");
+        MyThread t2 = new MyThread(d, "Yuvraj");
+
+        // 3. Start both threads
+        t1.start();
+        t2.start();
+    }
+}
+
+What happens when you run this?
+ * The Race Condition: Since the wish method in your notes isn't synchronized, both threads will enter the method at the same time.
+ * Mixed Output: Because of the Thread.sleep(2000), you will likely see something like:
+   * Good Morning: Good Morning: Dhoni
+   * Yuvraj
+     This happens because t1 sleeps after printing "Good Morning:", allowing t2 to jump in and print its "Good Morning:" before t1 even finishes its first line.
+How to fix it using what we learned?
+If you want Dhoni to finish all 10 wishes before Yuvraj starts, you have two choices:
+ * The Easy Way: Add the synchronized keyword to the wish method.
+ * The Pro Way (ReentrantLock): Use the Lock interface we just discussed!
+Would you like me to rewrite this specific example using a ReentrantLock so you can see exactly where the lock() and unlock() calls should go?
+
