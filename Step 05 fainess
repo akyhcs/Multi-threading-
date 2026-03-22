@@ -1,0 +1,27 @@
+When you create a ReentrantLock, you have the option to pass a boolean value into the constructor: new ReentrantLock(true) or new ReentrantLock(false).
+This boolean is the Fairness Flag. It decides how the "waiting line" for the lock is managed.
+1. Unfair Lock (new ReentrantLock(false))
+This is the default behavior in Java because it is significantly faster.
+In an "Unfair" system, if a thread requests the lock at the exact moment the previous owner releases it, that thread can "barge in" and grab the lock—even if other threads have been waiting in line for a long time.
+ * The Analogy: You are standing in a long line at a coffee shop. Just as the person at the counter leaves, someone walks in off the street and jumps straight to the counter before the next person in line can step forward.
+ * Why use it? It offers much higher throughput. Because the JVM doesn't have to strictly manage a queue and "wake up" the specific thread at the front of the line, it saves a lot of CPU overhead.
+2. Fair Lock (new ReentrantLock(true))
+A "Fair" lock operates on a strict FIFO (First-In, First-Out) basis. The thread that has been waiting the longest is guaranteed to get the lock next.
+ * The Analogy: A professional bank queue. There is a single line, and the person at the very front is always the next one served. No one can cut in line.
+ * Why use it? It prevents Thread Starvation. In an unfair system, a very "unlucky" thread might keep getting cut off by new threads and never get to run. A fair lock ensures everyone eventually gets their turn.
+Strict Comparison
+| Feature | Unfair (false) | Fair (true) |
+|---|---|---|
+| Performance | Very High (Best throughput) | Lower (High overhead) |
+| Order | Random / Barging allowed | Strict FIFO (First-come, first-served) |
+| Starvation | Possible (Rare, but possible) | Impossible |
+| Context Switching | Minimal | Frequent (Waking up specific threads) |
+Which one should you use for Salesforce?
+In your case, with 180 batches being processed by Virtual Threads:
+ * Stick with Unfair (Default): Usually, you want the batches to finish as fast as possible. If Batch #50 finishes before Batch #2, it usually doesn't matter for an API integration. The speed boost from "Unfair" locking is worth it.
+ * Use Fair ONLY if: You have a strict requirement that Batch 1 must be sent to Salesforce before Batch 2, and so on. However, if order is that important, you might be better off using a SingleThreadExecutor instead of parallel virtual threads.
+> A Warning on Performance:
+> Making a lock "Fair" can sometimes make your code 10x to 100x slower under heavy load. The JVM has to do a lot of "bookkeeping" to track exactly who arrived when. Only turn on fairness if you have a specific bug related to threads never getting a chance to run.
+> 
+Would you like me to show you how to measure the "Wait Time" of your threads so you can see if any are actually being starved?
+
