@@ -1,0 +1,78 @@
+Here is the modern, enterprise-grade way to write the exact same logic.
+In modern Java, we separate the "What" (the task we want to do) from the "How" (the thread that runs it).
+Instead of extending the Thread class directly, we implement the Runnable interface. Then, we hand those tasks over to the ExecutorService (specifically, the Virtual Thread Executor) to manage them.
+The Modern Refactor
+import java.util.concurrent.Executors;
+import java.util.concurrent.locks.ReentrantLock;
+
+class Display {
+    private final ReentrantLock lock = new ReentrantLock();
+
+    public void wish(String name) {
+        lock.lock();
+        try {
+            for (int i = 0; i < 10; i++) {
+                System.out.print("Good Morning: ");
+                try {
+                    Thread.sleep(2000); 
+                } catch (InterruptedException e) {
+                    // Best Practice: Always restore the interrupt status!
+                    Thread.currentThread().interrupt();
+                    System.out.println("Thread interrupted");
+                    break; // Exit the loop early if interrupted
+                }
+                System.out.println(name);
+            }
+        } finally {
+            lock.unlock();
+        }
+    }
+}
+
+// 1. Implement Runnable instead of extending Thread
+class WishTask implements Runnable {
+    private final Display d;
+    private final String name;
+
+    WishTask(Display d, String name) {
+        this.d = d;
+        this.name = name;
+    }
+
+    @Override
+    public void run() {
+        d.wish(name);
+    }
+}
+
+public class Main {
+    public static void main(String[] args) {
+        Display d = new Display();
+
+        // 2. Define the tasks (The "What")
+        Runnable task1 = new WishTask(d, "Dhoni");
+        Runnable task2 = new WishTask(d, "Yuvraj");
+
+        // 3. Use the ExecutorService (The "How") in a try-with-resources block
+        try (var executor = Executors.newVirtualThreadPerTaskExecutor()) {
+            
+            // Submit the tasks. The executor will spin up a Virtual Thread for each.
+            executor.submit(task1);
+            executor.submit(task2);
+            
+            System.out.println("Tasks submitted to the executor!");
+            
+            // 4. Automatic Cleanup
+            // When the code reaches this closing brace '}', the executor 
+            // automatically waits for all submitted tasks to finish and then shuts down cleanly.
+        } 
+        
+        System.out.println("All tasks finished. Exiting main.");
+    }
+}
+
+Why is this better than extending Thread?
+ * No Wasted OS Resources: Thread.start() creates a heavy OS platform thread. By using newVirtualThreadPerTaskExecutor(), Java creates a lightweight virtual thread. You could submit one million WishTask objects to this executor, and it wouldn't crash your computer.
+ * Better Object-Oriented Design: In Java, a class can only extend one parent class. If MyThread extends Thread, it can't extend anything else. By implementing Runnable, your class is free to extend another class if needed.
+ * No Manual Shutdowns: The try-with-resources block (the try (...) { syntax) implements Structured Concurrency. It guarantees that the main method will not exit until Dhoni and Yuvraj have both finished printing their 10 lines. You don't have to manually call t1.join() or executor.shutdown().
+Would you like to see how to return a value from these threads (for example, returning the total time it took to print the 10 lines) using the Callable interface and Future objects?
