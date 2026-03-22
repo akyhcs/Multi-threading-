@@ -1,0 +1,70 @@
+ThreadLocal is a powerful utility that provides thread-isolation. While ReentrantLock is about multiple threads sharing one variable safely, ThreadLocal is about giving each thread its own private, independent copy of a variable.
+Think of it as the "Personal Locker" of the Java world. Even if 100 threads are running the same code, they won't step on each other's toes because they aren't looking at a shared map; they are looking at their own pockets.
+1. The Real-World Analogy: The Exam Hall
+ * Shared Variable (Locking): There is one eraser on the teacher's desk. If a student wants it, they must walk up, grab it (lock), use it, and put it back (unlock). Only one person uses it at a time.
+ * ThreadLocal: Every student is given their own eraser at their own desk. They don't need to ask permission or wait in line. They just reach down and use their own copy.
+2. Implementation without Lambdas
+Since you prefer avoiding lambdas, here is the traditional way to define a ThreadLocal by overriding the initialValue() method.
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+class SalesforceSessionManager {
+    // 1. Define the ThreadLocal. 
+    // This acts as a "Template" for each thread's private variable.
+    private static final ThreadLocal<String> sessionToken = new ThreadLocal<>() {
+        @Override
+        protected String initialValue() {
+            return "EMPTY_SESSION"; // Default value for a new thread
+        }
+    };
+
+    public static void setToken(String token) {
+        sessionToken.set(token);
+    }
+
+    public static String getToken() {
+        return sessionToken.get();
+    }
+
+    public static void removeToken() {
+        sessionToken.remove(); // Crucial for Thread Pools!
+    }
+}
+
+class SyncTask implements Runnable {
+    private final String taskToken;
+
+    SyncTask(String token) {
+        this.taskToken = token;
+    }
+
+    @Override
+    public void run() {
+        // Set the token for THIS specific thread
+        SalesforceSessionManager.setToken(taskToken);
+        
+        System.out.println(Thread.currentThread().getName() + " is using Token: " + SalesforceSessionManager.getToken());
+        
+        // Clean up when done
+        SalesforceSessionManager.removeToken();
+    }
+}
+
+3. Why is this critical for your 180 Batches?
+In a Salesforce orchestrator, you often have a User Context or a Transaction ID.
+ * If you store the TransactionID in a simple static variable, Batch #5 might accidentally overwrite the ID for Batch #4 while it's still running.
+ * With ThreadLocal, Batch #4 and Batch #5 each have their own "envelope" for that ID. You can call deep, nested methods without passing the ID as a parameter everywhere—you just call getToken() whenever you need it.
+4. The "Thread Pool" Danger (Memory Leaks)
+There is one major trap when using ThreadLocal with an ExecutorService.
+Threads in a pool are reused. If Thread-1 finishes Batch #1 but doesn't call .remove(), the sessionToken stays stuck in that thread's memory. When Thread-1 is picked up to run Batch #50, it might still see the old token from Batch #1!
+> Rule of Thumb: Always call threadLocal.remove() in a finally block when the task is finished.
+> 
+Comparison: Shared vs. Local
+| Feature | ReentrantLock (Shared) | ThreadLocal (Private) |
+|---|---|---|
+| Strategy | Synchronization (Wait your turn) | Isolation (Everyone gets their own) |
+| Performance | Slower (Wait/Context Switch) | Fast (No contention) |
+| Memory | Low (One variable) | Higher (Variable per thread) |
+| Best For | Databases, Shared Counters | User Sessions, DB Connections, Transaction IDs |
+Would you like me to show you how to use ThreadLocal to track the "Start Time" of each of your 180 batches so you can log exactly how long each individual thread took to finish?
+
