@@ -1,0 +1,51 @@
+In modern Java development—especially when you are handling 180 Salesforce batches—you should almost never create threads manually using new Thread().start().
+Instead, you use a Thread Pool.
+A Thread Pool is a managed collection of "Worker Threads" that sit in a queue, waiting for tasks. When a task arrives, a worker grabs it, completes it, and then goes back to the pool to wait for the next one. This is much more efficient than creating and destroying threads constantly, which is expensive for the Operating System.
+1. Why use a Pool? (The Restaurant Analogy)
+Imagine a restaurant:
+ * Manual Threads: Every time a customer walks in, the restaurant hires a new waiter. When the customer leaves, the waiter is fired. This is chaotic and expensive.
+ * Thread Pool: The restaurant has a fixed team of 5 waiters. They serve a customer, then immediately move to the next table. If all waiters are busy, new customers wait in a line (the Work Queue).
+2. Common Types of Thread Pools
+Java provides the Executors factory class to create different types of pools depending on your needs:
+| Pool Type | Method | Best For... |
+|---|---|---|
+| Fixed | newFixedThreadPool(n) | Situations with predictable load (e.g., exactly 10 concurrent API calls). |
+| Cached | newCachedThreadPool() | Short-lived tasks. It creates new threads as needed and kills them when idle. |
+| Scheduled | newScheduledThreadPool(n) | Tasks that need to run every hour or after a specific delay. |
+| Virtual | newVirtualThreadPerTaskExecutor() | High-scale I/O (like your Salesforce project). It handles millions of tasks without breaking a sweat. |
+3. How to Implement a Pool
+Here is how you would process your tasks using a Fixed Thread Pool.
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+public class SalesforceOrchestrator {
+    public static void main(String[] args) {
+        // 1. Create a pool with 5 "Worker" threads
+        ExecutorService executor = Executors.newFixedThreadPool(5);
+
+        // 2. Submit 180 batches to the pool
+        for (int i = 1; i <= 180; i++) {
+            int batchId = i;
+            executor.submit(() -> {
+                System.out.println("Processing Batch " + batchId + " via " + Thread.currentThread().getName());
+                // Simulate Salesforce API call
+                try { Thread.sleep(2000); } catch (InterruptedException e) {}
+            });
+        }
+
+        // 3. Gracefully shut down the pool when finished
+        executor.shutdown();
+    }
+}
+
+4. The Life Cycle of a Task
+When you call executor.submit(), the task goes through these stages:
+ * Submission: The task enters the Blocking Queue.
+ * Execution: An available thread from the pool "picks up" the task and runs its run() method.
+ * Completion: The thread finishes and returns to the pool.
+ * Rejection: If the queue is full and all threads are busy (and you've set a limit), the pool may "reject" the task.
+5. Why Virtual Threads change everything
+In traditional Thread Pools (Platform Threads), if you have 5 threads and all 5 are waiting for Salesforce to respond, your CPU is sitting idle doing nothing.
+With Virtual Threads (Executors.newVirtualThreadPerTaskExecutor()), the thread "unmounts" from the CPU while waiting for the API. This allows you to run all 180 batches simultaneously without needing 180 expensive OS threads.
+Since you are dealing with many batches, would you like me to show you how to use a CompletableFuture with a Thread Pool so you can get a notification the moment all 180 batches are finished?
+
