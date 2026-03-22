@@ -1,0 +1,74 @@
+Here is how you fix the race condition in your handwritten code using a ReentrantLock.
+The key change is inside the Display class. We add a lock and ensure the entire for loop inside the wish method is protected by a try-finally block.
+import java.util.concurrent.locks.ReentrantLock;
+
+class Display {
+    // 1. Create the Lock instance
+    private final ReentrantLock lock = new ReentrantLock();
+
+    public void wish(String name) {
+        // 2. Acquire the lock before starting the work
+        lock.lock(); 
+        
+        try {
+            // CRITICAL SECTION: Only one thread can be inside this loop at a time
+            for (int i = 0; i < 10; i++) {
+                System.out.print("Good Morning: ");
+                try {
+                    Thread.sleep(2000); 
+                } catch (InterruptedException e) {
+                    System.out.println("Thread interrupted");
+                }
+                System.out.println(name);
+            }
+        } finally {
+            // 3. ALWAYS release the lock in a finally block
+            lock.unlock(); 
+        }
+    }
+}
+
+class MyThread extends Thread {
+    Display d;
+    String name;
+
+    MyThread(Display d, String name) {
+        this.d = d;
+        this.name = name;
+    }
+
+    public void run() {
+        d.wish(name);
+    }
+}
+
+public class Main {
+    public static void main(String[] args) {
+        Display d = new Display();
+
+        // Both threads share the exact same Display instance 'd'
+        MyThread t1 = new MyThread(d, "Dhoni");
+        MyThread t2 = new MyThread(d, "Yuvraj");
+
+        t1.start();
+        t2.start();
+    }
+}
+
+Why this fixes the problem:
+ * The Bottleneck: When t1 (Dhoni) calls d.wish("Dhoni"), it hits lock.lock() and successfully grabs the key.
+ * The Wait: A fraction of a second later, t2 (Yuvraj) calls d.wish("Yuvraj"). It hits lock.lock(), but because t1 has the key, t2 is forced to pause and wait at that exact line.
+ * The Execution: t1 safely executes its entire loop, printing "Good Morning: Dhoni" 10 times, completely undisturbed, even while sleeping.
+ * The Release: Once t1 finishes the loop, it hits lock.unlock() in the finally block.
+ * The Hand-off: t2 immediately wakes up, grabs the key, and prints "Good Morning: Yuvraj" 10 times.
+Expected Output
+Instead of jumbled text, you will now see perfect, sequential order:
+Good Morning: Dhoni
+Good Morning: Dhoni
+... (8 more times)
+Good Morning: Yuvraj
+Good Morning: Yuvraj
+... (8 more times)
+
+Would you like to see how to rewrite this MyThread class to use modern Runnable tasks and Executors.newVirtualThreadPerTaskExecutor() instead of manually extending the old Thread class?
+
