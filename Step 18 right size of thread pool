@@ -1,0 +1,33 @@
+Choosing the correct number of threads for a FixedThreadPool is a balancing act. If you pick too many, your CPU wastes time switching between them ("Context Switching"). If you pick too few, your CPU sits idle while waiting for data.
+The logic depends entirely on whether your tasks are CPU-Bound or I/O-Bound.
+1. CPU-Bound Tasks
+These are tasks that keep the processor busy the entire time (e.g., heavy math, image processing, or data encryption).
+ * The Logic: You should have one thread per CPU core.
+ * The Formula: Number of Threads = Number of Available Cores
+ * In Java: Runtime.getRuntime().availableProcessors()
+> Why? If you have 8 cores and 100 CPU-heavy threads, the cores will constantly stop one task to start another. This overhead actually makes the total work take longer.
+> 
+2. I/O-Bound Tasks (Like your Salesforce Project)
+These are tasks that spend most of their time waiting for something external (e.g., an API response from Salesforce, a database query, or reading a file).
+ * The Logic: You can have significantly more threads than cores because while one thread is waiting for Salesforce, the CPU can switch to another thread to start the next request.
+ * The Formula: 
+Number\ of\ Threads = Number\ of\ Cores \times \left(1 + \frac{Wait\ Time}{Service\ Time}\right) ********
+   * Wait Time: Time spent waiting (e.g., 2000ms for API).
+   * Service Time: Time spent actually processing data (e.g., 50ms).
+3. Practical Rule of Thumb for Salesforce
+Since you are dealing with 180 batches and a remote API, your bottleneck isn't your CPU—it's Salesforce's Rate Limits and Network Latency.
+| Scenario | Recommended Thread Count |
+|---|---|
+| Strict Rate Limits | 1 to 5 threads. Slow and steady to avoid 429 errors. |
+| Standard Integration | 10 to 20 threads. Good balance of speed and stability. |
+| Bulk/High Speed | 50+ threads (Use Virtual Threads). Only if Salesforce is set up for high concurrency. |
+4. How to detect if your count is wrong
+ * Too Low: Your 180 batches take a very long time to finish, but your computer’s CPU usage is only at 5%. (You are under-utilizing your resources).
+ * Too High: Your application starts throwing OutOfMemoryError or Salesforce starts rejecting your connections with "Connection Reset" or "Too Many Requests."
+The "Modern" Answer: Virtual Threads
+If you are using Java 21+, the logic changes. You don't "size" a Virtual Thread pool. You just use Executors.newVirtualThreadPerTaskExecutor().
+ * It automatically scales.
+ * If a thread waits for Salesforce, it yields the CPU immediately.
+ * You could technically run all 180 batches at once, and the JVM will manage the underlying "carrier" threads for you perfectly.
+Would you like me to show you how to write a small "Benchmark" script that tests your Salesforce sync with 5, 10, and 20 threads so you can see which one is actually fastest?
+
