@@ -1,0 +1,42 @@
+isHeldByCurrentThread() is a specialized boolean method in the ReentrantLock class. It tells you one simple thing: "Do I (the thread currently running this line of code) own this lock right now?"
+It returns true if the current thread holds the lock, and false if the lock is either free or held by a different thread.
+1. The Real-World Analogy: Checking Your Pocket
+Imagine you are walking through a building with many locked doors.
+ * isLocked(): Checks if the door is shut and bolted (anyone could be inside).
+ * isHeldByCurrentThread(): You reach into your pocket to see if you are the one holding the key to that specific door.
+2. Why is this different from lock.getHoldCount() > 0?
+While they are related, they serve different purposes:
+ * getHoldCount(): Tells you how many times you locked it (1, 2, 3...).
+ * isHeldByCurrentThread(): Is a quick Yes/No safety check. It is often used in assert statements to prevent bugs.
+3. Top 3 Use Cases
+A. The "Safety Guard" (Assertions)
+This is the most common professional use. If you have a method that is not thread-safe and requires a lock to be held before it is called, you can add a check. This catches bugs during development before they hit production.
+public void updateSalesforceInternal() {
+    // If the developer forgot to lock before calling this, fail immediately!
+    if (!lock.isHeldByCurrentThread()) {
+        throw new IllegalMonitorStateException("Design Error: You must hold the lock!");
+    }
+    // Safe to perform logic here...
+}
+
+B. Conditional Unlocking
+Sometimes, in complex logic with many if/else branches, you might not be 100% sure if a specific path actually acquired the lock. To avoid an IllegalMonitorStateException (which happens if you try to unlock something you don't own), you can check first.
+try {
+    // complex logic...
+} finally {
+    if (lock.isHeldByCurrentThread()) {
+        lock.unlock();
+    }
+}
+
+C. Avoiding Deadlocks in Recursive Logic
+If you are about to call a method that might block, you can check if you already own the lock. If you do, you know you can proceed without waiting.
+4. Comparison: Knowledge is Power
+| Method | Returns | Meaning |
+|---|---|---|
+| isLocked() | boolean | Is anyone holding this lock? |
+| isHeldByCurrentThread() | boolean | Is the current thread holding this lock? |
+| getHoldCount() | int | How many times has the current thread locked it? |
+Summary for your Orchestrator
+In your Salesforce project, you would use isHeldByCurrentThread() mostly for logging and debugging. If a batch fails, you can log whether the thread still had the lock at the moment of failure, which helps you track down "leakage" where locks aren't being released properly.
+Would you like me to show you how to use this in a "Global Error Handler" to make sure no thread leaves your system with a lock still in its pocket?
