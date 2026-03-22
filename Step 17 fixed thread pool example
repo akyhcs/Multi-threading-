@@ -1,0 +1,69 @@
+Using a FixedThreadPool is the standard way to limit how many threads are running at the exact same time. If you have 180 batches but only want 10 of them hitting the Salesforce API at once (to avoid rate limiting), this is the tool you use.
+When you submit a Runnable, the pool puts it into a Blocking Queue. The fixed number of threads then "eat" their way through that queue until it’s empty.
+The FixedThreadPool Implementation
+Here is the clean, production-ready code to process your 180 batches using a pool of 10 worker threads.
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+
+class SalesforceTask implements Runnable {
+    private final int batchId;
+
+    public SalesforceTask(int id) {
+        this.batchId = id;
+    }
+
+    @Override
+    public void run() {
+        String threadName = Thread.currentThread().getName();
+        System.out.println("[START] Batch " + batchId + " being processed by " + threadName);
+        
+        try {
+            // Simulate the Salesforce API call (3 seconds)
+            Thread.sleep(3000); 
+            System.out.println("[FINISH] Batch " + batchId + " completed successfully.");
+        } catch (InterruptedException e) {
+            System.err.println("Batch " + batchId + " was interrupted!");
+            Thread.currentThread().interrupt();
+        }
+    }
+}
+
+public class Main {
+    public static void main(String[] args) {
+        // 1. Create a pool with exactly 10 threads
+        // Even if we submit 180 tasks, only 10 will run at a time.
+        ExecutorService executor = Executors.newFixedThreadPool(10);
+
+        System.out.println("--- Submitting 180 Batches ---");
+
+        // 2. Submit the 180 Runnable tasks
+        for (int i = 1; i <= 180; i++) {
+            executor.submit(new SalesforceTask(i));
+        }
+
+        // 3. Initiate a graceful shutdown
+        // This stops the pool from accepting NEW tasks, but allows existing ones to finish.
+        executor.shutdown();
+
+        try {
+            // 4. Wait for all 180 tasks to finish (timeout after 10 minutes)
+            if (!executor.awaitTermination(10, TimeUnit.MINUTES)) {
+                executor.shutdownNow(); // Force kill if it takes too long
+            }
+        } catch (InterruptedException e) {
+            executor.shutdownNow();
+        }
+
+        System.out.println("--- All Salesforce batches processed! ---");
+    }
+}
+
+Key Concepts for your Orchestrator
+ * The Queue: When you submit the 11th task, the executor sees all 10 threads are busy. It puts the 11th task into a LinkedBlockingQueue. It stays there until one of the first 10 threads calls unlock() or finishes its run() method.
+ * executor.shutdown(): This is critical. Without this, your program will never exit! The "Worker Threads" in the pool are non-daemon threads, meaning they stay alive waiting for more work forever unless you explicitly tell the pool to close.
+ * awaitTermination: This acts like a "Join" for the entire pool. It pauses the main thread until every single batch in the queue has been processed.
+Why this is better for Salesforce than "new Thread()"
+ * Throttling: If you started 180 new Thread() calls at once, you would likely trigger a 503 Service Unavailable or 429 Too Many Requests error from Salesforce. The FixedThreadPool(10) ensures you never exceed 10 concurrent connections.
+ * Resource Management: Creating 180 OS threads consumes a lot of RAM (usually 1MB per thread stack). A pool of 10 threads uses a fraction of that memory.
+Since you are using submit, would you like to see how to use invokeAll to send a whole List of 180 batches at once and get back a List of results?
