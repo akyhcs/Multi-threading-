@@ -1,0 +1,55 @@
+tryLock() is the "polite" version of lock(). While lock() is a blocking call—meaning your thread will sit and wait forever until it gets the key—tryLock() is non-blocking. It checks the lock and immediately tells you if it's available or not.
+Think of it as the difference between standing in a long line at a bank (lock()) versus peeking through the window to see if there is a line, and if so, deciding to come back later (tryLock()).
+1. How it Works (The Boolean Return)
+The tryLock() method returns a boolean:
+ * true: You successfully grabbed the lock. You are now the owner.
+ * false: Someone else has the lock. You failed to grab it, but your thread is still "free" to do other things.
+2. The Basic "Check and Move On" Pattern
+This is perfect for background tasks where you don't want to waste resources waiting.
+if (lock.tryLock()) {
+    try {
+        // I have the lock! Do the work.
+        processSalesforceBatch();
+    } finally {
+        lock.unlock();
+    }
+} else {
+    // I could NOT get the lock. 
+    // Instead of waiting, I'll log a message or try again in 5 minutes.
+    System.out.println("System busy, skipping this batch for now.");
+}
+
+3. The "Wait a Little Bit" Pattern (Timeouts)
+You can also tell tryLock to wait for a specific amount of time before giving up. This is the most common way to prevent Deadlocks.
+try {
+    // Wait for up to 5 seconds to get the lock
+    if (lock.tryLock(5, TimeUnit.SECONDS)) {
+        try {
+            // Work starts here
+        } finally {
+            lock.unlock();
+        }
+    } else {
+        System.err.println("Timed out waiting for the lock. Salesforce might be slow.");
+    }
+} catch (InterruptedException e) {
+    // Handle the thread being interrupted
+}
+
+4. Why tryLock is a "Life-Saver"
+A. Avoiding Deadlocks
+If Thread A has Lock 1 and wants Lock 2, and Thread B has Lock 2 and wants Lock 1, they will hang forever (Deadlock). If they use tryLock with a timeout, one of them will eventually "give up" and release its own lock, allowing the other one to finish.
+B. Keeping UI/Apps Responsive
+If you are building a mobile app or a web server, you never want a request to hang forever. Using tryLock(10, SECONDS) ensures that even if something goes wrong, the user gets an "Error: Please try again" instead of a spinning loading wheel that never disappears.
+C. "Best Effort" Tasks
+If you have a task that runs every minute (like a cleanup script), you might use tryLock. If the previous minute's task is still running, the new one sees the lock is taken and simply exits, preventing multiple cleanup tasks from piling up and crashing the server.
+Comparison: lock() vs. tryLock()
+| Feature | lock() | tryLock() |
+|---|---|---|
+| Patience | Infinite (Will wait forever) | Zero (Checks and returns immediately) |
+| Return Type | void | boolean (Success or Failure) |
+| Deadlock Risk | High | Low |
+| Complexity | Simple | Requires if/else logic |
+| Timeouts | No | Yes |
+Would you like me to show you a "Double Lock" example where tryLock is used to safely acquire two different locks without ever causing a deadlock?
+
