@@ -1,0 +1,36 @@
+It sounds like you’re looking for a complete reference "cheat sheet" for the methods in the Java Lock framework. Since we’ve been talking about ReentrantLock and Condition, here is the breakdown of the methods you'll find in the three primary interfaces.
+1. The Lock Interface
+This is the base interface that replaces synchronized. These methods control the actual "grabbing" and "releasing" of the lock.
+| Method | Description |
+|---|---|
+| lock() | Acquires the lock. If the lock is not available, the thread sleeps until it is. |
+| lockInterruptibly() | Same as lock(), but allows the thread to be interrupted while waiting (throws InterruptedException). |
+| tryLock() | Non-blocking. Returns true immediately if the lock is free, false otherwise. |
+| tryLock(long, TimeUnit) | Waits for the lock for a specific duration. Returns false if time runs out. |
+| unlock() | Releases the lock. Must be called by the thread that currently holds the lock. |
+| newCondition() | Returns a new Condition instance tied to this lock for wait/notify logic. |
+2. The Condition Interface
+This interface replaces Object.wait() and Object.notify(). You get a Condition object by calling lock.newCondition().
+| Method | Description |
+|---|---|
+| await() | Causes the thread to wait until it is signaled or interrupted. Releases the lock while waiting. |
+| awaitUninterruptibly() | Same as await(), but ignores thread interrupts. |
+| awaitNanos(long) | Waits for a specific number of nanoseconds. Returns the remaining time. |
+| **await(long, TimeUnit) | Waits for a specific time. Returns false if the timeout is reached. |
+| awaitUntil(Date) | Waits until a specific absolute deadline (date/time) is reached. |
+| signal() | Wakes up one thread waiting on this specific condition. |
+| signalAll() | Wakes up all threads waiting on this specific condition. |
+3. The ReadWriteLock Interface
+This is a "Factory" interface used for high-read, low-write scenarios. It doesn't have many methods of its own; it just hands you two different Lock objects.
+| Method | Description |
+|---|---|
+| readLock() | Returns the lock used for reading. Multiple threads can hold this at once. |
+| writeLock() | Returns the lock used for writing. Only one thread can hold this (exclusive). |
+Pro-Tip: The "Hidden" Methods of ReentrantLock
+While these aren't in the Lock interface, the ReentrantLock class has extra "monitoring" methods that are great for debugging your Salesforce orchestrator:
+ * getHoldCount(): Tells you how many times the current thread has called lock() without an unlock() (useful for recursive logic).
+ * isHeldByCurrentThread(): Returns true if the thread executing the code owns the lock.
+ * hasQueuedThreads(): Tells you if other threads are currently waiting in line for this lock.
+ * getQueueLength(): Gives you an estimate of how many threads are stuck waiting.
+Since you now have the full list of methods, would you like me to show you how to use tryLock with a timeout to prevent your Salesforce batches from hanging the entire application?
+
