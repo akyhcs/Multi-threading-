@@ -1,0 +1,43 @@
+lockInterruptibly() is the most "responsive" way to wait for a lock.
+To understand it, you first have to realize a major flaw in the standard lock() method: It is unstoppable. If a thread calls lock.lock() and the lock is never released, that thread will sit there until the end of time. You cannot kill it, you cannot cancel it, and it will ignore any Thread.interrupt() signals you send it.
+lockInterruptibly() fixes this by allowing a thread to "wake up" and give up if someone tells it to stop waiting.
+1. The Real-World Analogy: The Emergency Exit
+Imagine you are waiting in a long, locked hallway for a meeting.
+ * lock(): You are in a soundproof room. Even if the fire alarm goes off or someone screams your name to leave, you can't hear them. You stay in that hallway until the door opens.
+ * lockInterruptibly(): You are waiting, but you have your phone on you. If your boss calls and says, "The meeting is canceled, come back to the office," you can immediately leave the hallway and go do something else.
+2. How it Works (The Code Pattern)
+Because this method can "fail" if an interrupt happens, Java forces you to handle a checked exception: InterruptedException.
+try {
+    // Attempt to get the lock, but stay "awake" for signals
+    lock.lockInterruptibly(); 
+    try {
+        // Critical Section: I have the lock!
+        doSalesforceWork();
+    } finally {
+        lock.unlock();
+    }
+} catch (InterruptedException e) {
+    // This code runs if another thread called thread.interrupt()
+    System.out.println("Wait was canceled! Cleaning up and exiting...");
+    // Restore the interrupt status (Standard Java practice)
+    Thread.currentThread().interrupt(); 
+}
+
+3. Critical Use Cases
+A. User Cancellation
+If you are running one of your 180 Salesforce batches and the user clicks a "Cancel Sync" button in your UI, you need a way to stop the threads that are currently stuck waiting for the Semaphore or Lock. lockInterruptibly() allows those threads to exit gracefully instead of hanging in the background.
+B. Clean System Shutdown
+When you stop your Spring Boot application, the JVM tries to shut down all thread pools. If a thread is stuck in a standard lock(), it might prevent the application from closing cleanly, forcing you to "Kill -9" the process. lockInterruptibly() ensures threads respond to the shutdown signal.
+C. Deadlock Breaking
+If your system detects a deadlock (Thread A wants Lock B, Thread B wants Lock A), a "Watchdog" thread can simply interrupt one of the threads. That thread will throw an exception, release its current locks, and break the deadlock cycle.
+4. Comparison: The "Interruption" Test
+| Feature | lock.lock() | lock.lockInterruptibly() |
+|---|---|---|
+| Response to .interrupt() | Ignored. Continues waiting. | Responds. Throws InterruptedException. |
+| Use Case | Simple, very fast internal logic. | Background tasks, UI tasks, long waits. |
+| Complexity | Low (No try-catch needed). | Medium (Requires exception handling). |
+| Safety | Risky (Can lead to "Zombie" threads). | Safe (Thread always remains controllable). |
+5. Why it's Great for Virtual Threads
+Virtual threads are designed to be lightweight and easily disposable. In a large-scale system, you might have thousands of them waiting for various resources. Using lockInterruptibly() is considered Best Practice for Virtual Threads because it ensures that if the underlying task is timed out or canceled by a parent scope (like Structured Concurrency), the threads disappear immediately rather than lingering.
+Would you like me to show you a "Watchdog" example where one thread interrupts another that has been waiting too long for a lock?
+
