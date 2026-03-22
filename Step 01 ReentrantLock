@@ -1,0 +1,76 @@
+ReentrantLock is the primary implementation of the Lock interface in Java. While it can do everything the synchronized keyword does, its real value lies in the advanced control it offers for complex, high-performance, or modern Java 21+ applications.
+Here are all the major use cases for ReentrantLock, categorized by the specific problem they solve.
+1. Modern Java 21+ (Virtual Thread Safety)
+This is currently the most critical use case for Java developers.
+ * Avoiding Pinning: Unlike synchronized, ReentrantLock does not "pin" a virtual thread to its carrier OS thread during I/O.
+ * Scenario: If your application uses Virtual Threads to make API calls or DB queries while holding a lock, you must use ReentrantLock to ensure the JVM can unmount the thread and maintain scalability.
+2. Preventing Deadlocks (Non-Blocking Attempts)
+synchronized forces a thread to wait forever if a lock is held by someone else. ReentrantLock allows a thread to "check and walk away."
+ * Use Case: High-throughput systems where it is better to skip an operation or try an alternative path than to sit and wait.
+ * Method: tryLock()
+if (lock.tryLock()) {
+    try {
+        // execute task
+    } finally {
+        lock.unlock();
+    }
+} else {
+    // Perform an alternative action or log a skip instead of hanging
+}
+
+3. Handling Unreliable Resources (Timeouts)
+If a resource (like a shared connection) is held too long, you might want to time out the request to keep the rest of your system responsive.
+ * Use Case: Preventing "cascading failures" in microservices or distributed environments.
+ * Method: tryLock(long time, TimeUnit unit)
+ * Scenario: Waiting exactly 2 seconds for a database-sync lock; if it's not available by then, return a "System Busy" error to the user.
+4. Cancelable Background Tasks (Interruptibility)
+Sometimes a user cancels an operation, or a system shutdown signal is sent. Standard synchronized ignores Thread.interrupt() until it finally gets the lock.
+ * Use Case: Cleanly shutting down background worker threads that are stuck waiting for a resource.
+ * Method: lockInterruptibly()
+ * Scenario: A long-running report generation task that needs to stop immediately when the user clicks "Cancel."
+5. Preventing Starvation (Fairness Policy)
+By default, Java locks are "unfair" (the most recent thread to arrive might jump the line). ReentrantLock can be configured to be Fair (First-In, First-Out).
+ * Use Case: Systems where every request must be processed in the order it arrived, ensuring no thread is left waiting forever while "lucky" threads keep getting the lock.
+ * Constructor: new ReentrantLock(true)
+6. Complex Signaling (Multiple Conditions)
+synchronized gives you one "waiting room" (wait/notify). ReentrantLock allows you to have multiple specialized waiting rooms for the same lock.
+ * Use Case: Efficient Producer-Consumer queues.
+ * Method: lock.newCondition()
+ * Scenario: A queue where you have a notFull condition (for producers) and a notEmpty condition (for consumers). You can wake up only the consumers when an item is added, without waking up the other producers.
+7. Nested or Recursive Method Calls (Reentrancy)
+The name "Reentrant" comes from the ability of a thread to re-acquire the same lock it already holds without deadlocking itself.
+ * Use Case: Shared utility classes where one locked method calls another locked method in the same class.
+ * Scenario:
+public void outerMethod() {
+    lock.lock(); // Count is 1
+    try {
+        innerMethod();
+    } finally {
+        lock.unlock();
+    }
+}
+
+public void innerMethod() {
+    lock.lock(); // Count becomes 2; thread is allowed in because it's the owner
+    try {
+        // logic
+    } finally {
+        lock.unlock(); // Count returns to 1
+    }
+}
+
+8. Hand-over-Hand Locking (Advanced Data Structures)
+Because Lock objects don't require block-scoping, you can acquire a lock in one place and release it in another.
+ * Use Case: Navigating a Concurrent Linked List.
+ * Scenario: To move from Node A to Node B safely, you lock Node A, then lock Node B, then release Node A. This "chaining" is impossible with the rigid {} structure of synchronized.
+Summary Checklist: When to choose ReentrantLock
+| Requirement | Use ReentrantLock? |
+|---|---|
+| Virtual Threads (Java 21+) | Yes (Required for I/O) |
+| Timeout Support | Yes |
+| Fairness (FIFO) | Yes |
+| Multiple Wait Conditions | Yes |
+| Try-before-blocking | Yes |
+| Simple, fast, in-memory sync | No (Use synchronized) |
+Would you like me to show you a practical code example of the "Multiple Conditions" use case (Producer-Consumer) using ReentrantLock?
+
