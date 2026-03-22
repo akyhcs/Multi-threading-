@@ -1,0 +1,57 @@
+I’ve transcribed and cleaned up the logic from your notes. You are using a "Wait and Retry" pattern, 
+which is a fantastic way to handle high-traffic systems like your Salesforce orchestrator.
+Here is the code rewritten clearly, using modern Java best practices:
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.ReentrantLock;
+
+class MyThread extends Thread {
+    static ReentrantLock l = new ReentrantLock();
+    String name;
+
+    MyThread(String name) {
+        this.name = name;
+    }
+
+    public void run() {
+        // The "do-while" loop ensures we keep trying until we succeed
+        do {
+            try {
+                // Try to acquire the lock for 5000 milliseconds (5 seconds)
+                if (l.tryLock(5000, TimeUnit.MILLISECONDS)) {
+                    System.out.println(name + " ... got the lock");
+                    
+                    try {
+                        // Critical Section: Simulate work (like a Salesforce API call)
+                        Thread.sleep(30000); // 30 seconds
+                    } finally {
+                        // Always unlock!
+                        System.out.println(name + " ... releasing the lock");
+                        l.unlock();
+                        break; // Exit the loop because we finished the work
+                    }
+                } else {
+                    // This runs if the lock was held by someone else for the full 5 seconds
+                    System.out.println(name + " ... unable to get lock, will try again");
+                }
+            } catch (InterruptedException e) {
+                // If the thread is interrupted while waiting for the lock
+                Thread.currentThread().interrupt();
+                break;
+            }
+        } while (true);
+    }
+}
+
+Key Improvements Made:
+ * Try-Finally Block: I moved l.unlock() into a finally block. In your notes, if Thread.sleep() threw an error, the lock would stay stuck forever. The finally block ensures the "key" is always returned.
+ * TimeUnit: Used TimeUnit.MILLISECONDS for better readability.
+ * Corrected Variable Name: Your notes used l.reluxdone, which I've updated to a standard print statement for clarity.
+ * Static Lock: I made the lock static. As we discussed, this ensures all threads are fighting for the same lock, rather than each having their own.
+How this behaves in the real world:
+Imagine Thread A starts and grabs the lock for 30 seconds.
+ * Thread B arrives and waits for 5 seconds (the tryLock timeout).
+ * After 5 seconds, Thread B fails to get the lock.
+ * Because of your do-while loop, Thread B immediately prints "unable to get lock" and tries again for another 5 seconds.
+ * This repeats until Thread A is finally done.
+Would you like me to show you how to add a "Counter" so that the thread eventually gives up completely after, say, 5 failed attempts?
+
