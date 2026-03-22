@@ -1,0 +1,33 @@
+This is one of the most common points of confusion with ThreadLocal. The behavior you're seeing isn't a bug—it’s actually the core "safety net" feature of how ThreadLocal works!
+Here is why you see "abc" instead of null at line 17:
+1. The Role of initialValue()
+When you created your ThreadLocal at line 5, you didn't just create a variable; you provided a Blueprint (the initialValue() method).
+This blueprint tells Java: "Whenever this thread doesn't have a value in its pocket, give it 'abc' by default."
+2. The Step-by-Step Logic
+Let's trace your code exactly:
+ * Line 13 (tl.get()): The thread looks in its pocket. It's empty. It calls your initialValue() method. It gets "abc".
+ * Line 14 (tl.set("durga")): You manually put "durga" into the thread's pocket. The "abc" is ignored for now.
+ * Line 15 (tl.get()): It looks in its pocket, finds "durga", and prints it.
+ * Line 16 (tl.remove()): You explicitly empty the pocket. The value "durga" is gone.
+ * Line 17 (tl.get()): The thread looks in its pocket again. It is empty.
+> Crucial Part: Because the pocket is empty, Java behaves exactly like it did at Line 13. It triggers the initialValue() method again to "refill" the pocket with your default value.
+> 
+3. How to get null instead
+If your goal was to see null after calling .remove(), you would need to define the ThreadLocal without overriding initialValue().
+// If you do it this way:
+ThreadLocal tl = new ThreadLocal(); 
+
+tl.set("durga");
+tl.remove();
+System.out.println(tl.get()); // THIS will now print null
+
+Summary of the "Life Cycle"
+| Action | Thread's Internal Storage | Result of get() |
+|---|---|---|
+| New ThreadLocal | Empty | Calls initialValue() -> abc |
+| .set("durga") | Has "durga" | Returns durga |
+| .remove() | Empty | Calls initialValue() -> abc |
+Why does Java do this?
+This is designed for things like Database Connections or User Sessions. If a thread finishes a task and clears its session (remove()), you want the next time it asks for a session to get a fresh, default starting point—not a dangerous NullPointerException.
+Would you like me to show you how this behavior changes when you use multiple threads at once?
+
