@@ -1,0 +1,35 @@
+For your Salesforce project or any I/O-heavy application, this formula is the standard mathematical way to calculate the "Sweet Spot" for your thread pool size.
+Here is the formula in a clean, copy-friendly format:
+The Optimal Thread Pool Formula
+> Number of Threads = Number of Cores × (1 + Wait Time / Service Time)
+> 
+How to use this in your Java Code
+You can actually programmatically calculate this at runtime to make your application adaptive to different server environments.
+// 1. Get the number of available CPU cores
+int numberOfCores = Runtime.getRuntime().availableProcessors();
+
+// 2. Define your timings (in milliseconds)
+// Example: Wait 2000ms for Salesforce API, spend 50ms processing the JSON result locally
+double waitTime = 2000.0; 
+double serviceTime = 50.0;
+
+// 3. Calculate the target pool size
+int targetPoolSize = (int) (numberOfCores * (1 + (waitTime / serviceTime)));
+
+// 4. Create your pool using the calculated logic
+// Note: You might want to cap this at a maximum (e.g., 50) to respect Salesforce limits
+int finalPoolSize = Math.min(targetPoolSize, 50); 
+ExecutorService executor = Executors.newFixedThreadPool(finalPoolSize);
+
+System.out.println("Cores: " + numberOfCores);
+System.out.println("Calculated Optimal Threads: " + targetPoolSize);
+
+Why this works
+ * Wait Time: This is "Idle Time." The thread is blocked waiting for a network packet or a database response. The CPU is doing zero work here.
+ * Service Time: This is "Active Time." The CPU is actually calculating, parsing, or moving data in memory.
+ * The Logic: If a thread spends 95% of its time waiting, you can run many more threads than you have cores, because the CPU can jump between them while they all wait on the network.
+A Quick Warning
+Even if the math says you can handle 200 threads, you must always consider the External Bottleneck:
+ * Salesforce Concurrent Limits: Salesforce usually limits the number of concurrent "long-running" transactions (often to 10 or 25).
+ * Database Connections: If your threads are writing to a local database, your connection pool (like HikariCP) might only have 10 slots.
+Would you like me to show you how to wrap your Thread Pool in a Semaphore so you can mathematically use 100 threads, but strictly limit only 10 to hit the Salesforce API at the exact same moment?
