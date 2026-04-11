@@ -1,0 +1,135 @@
+
+
+### 1. `IncrementTask.java` (The Runnable Implementation)
+
+```java
+import java.util.concurrent.locks.ReentrantLock;
+
+public class IncrementTask implements Runnable {
+
+    private final String threadName;
+    private final ReentrantLock lock;   // Lock is passed from outside
+    private static int counter = 0;     // Shared counter (static for simplicity)
+
+    public IncrementTask(String threadName, ReentrantLock lock) {
+        this.threadName = threadName;
+        this.lock = lock;
+    }
+
+    @Override
+    public void run() {
+        System.out.println(threadName + " is trying to acquire the lock...");
+
+        // Acquire the lock
+        lock.lock();
+        try {
+            System.out.println(threadName + " has acquired the lock.");
+
+            // Simulate work with multiple increments
+            for (int i = 0; i < 3; i++) {
+                increment();
+                Thread.sleep(100); // Small delay to observe interleaving
+            }
+
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            System.out.println(threadName + " was interrupted.");
+        } finally {
+            // Always release the lock
+            lock.unlock();
+            System.out.println(threadName + " has released the lock.");
+        }
+    }
+
+    private void increment() {
+        // Demonstrates reentrancy - same thread acquires lock again
+        lock.lock();
+        try {
+            counter++;
+            System.out.println(threadName + " incremented counter to: " + counter);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    // Getter for final result
+    public static int getCounter() {
+        return counter;
+    }
+}
+```
+
+### 2. `ReentrantLockDemo.java` (Main Class)
+
+```java
+import java.util.concurrent.locks.ReentrantLock;
+
+public class ReentrantLockDemo {
+
+    public static void main(String[] args) {
+
+        // Create a single shared ReentrantLock
+        ReentrantLock sharedLock = new ReentrantLock();
+
+        // Create Runnable tasks (each gets the same lock)
+        IncrementTask task1 = new IncrementTask("Thread-1", sharedLock);
+        IncrementTask task2 = new IncrementTask("Thread-2", sharedLock);
+        IncrementTask task3 = new IncrementTask("Thread-3", sharedLock);
+
+        // Create threads
+        Thread t1 = new Thread(task1, "Thread-1");
+        Thread t2 = new Thread(task2, "Thread-2");
+        Thread t3 = new Thread(task3, "Thread-3");
+
+        System.out.println("Starting threads with ReentrantLock...");
+
+        // Start all threads
+        t1.start();
+        t2.start();
+        t3.start();
+
+        // Wait for all threads to complete
+        try {
+            t1.join();
+            t2.join();
+            t3.join();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+
+        // Print final result
+        System.out.println("\nAll threads completed.");
+        System.out.println("Final counter value: " + IncrementTask.getCounter());
+    }
+}
+```
+
+### How to Run
+1. Create two separate files:
+   - `IncrementTask.java`
+   - `ReentrantLockDemo.java`
+2. Compile and run:
+   ```bash
+   javac *.java
+   java ReentrantLockDemo
+   ```
+
+### Key Benefits of This Structure
+- Clean separation of concerns
+- `IncrementTask` is reusable
+- Lock is injected via constructor (better for testing and dependency management)
+- No inner classes
+- Static counter with getter for clean access from main
+
+### Expected Behavior
+- Only one thread executes the critical section at a time.
+- Same thread can re-acquire the lock in `increment()` without deadlock (reentrancy).
+- Final counter should always be **9** (3 threads × 3 increments).
+
+Would you like me to add any of these enhancements?
+- Version using `ExecutorService` and a thread pool
+- Fair lock (`new ReentrantLock(true)`)
+- `tryLock()` with timeout example
+- Protecting a shared `List` or `Map` instead of a counter
+
+Just tell me what you'd like next!
