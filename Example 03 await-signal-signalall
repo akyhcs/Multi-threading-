@@ -113,3 +113,121 @@ Would you like me to:
 - Or an example with multiple consumers?
 
 Just tell me what would help you understand better!
+
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
+
+**`await()`, `signal()` and `signalAll()`** are the three most important methods on a `Condition` object (created with `ReentrantLock.newCondition()`).
+
+They are the modern, more powerful replacement for the old `wait()` / `notify()` / `notifyAll()` that you use with `synchronized`.
+
+### 1. `await()` – “Wait until someone wakes me up”
+
+**What it does**:
+- The current thread **releases the lock** immediately.
+- It goes to sleep (waits) until another thread calls `signal()` or `signalAll()` on the **same** `Condition`.
+- When it wakes up, it **automatically re-acquires** the lock before returning from `await()`.
+
+**Signature**:
+```java
+condition.await();                    // waits forever
+condition.await(long time, TimeUnit unit);  // waits with timeout
+```
+
+**Correct usage pattern** (always use a `while` loop!):
+```java
+lock.lock();
+try {
+    while (!myConditionIsTrue) {      // MUST be while, not if
+        condition.await();
+    }
+    // ... now do the work ...
+} finally {
+    lock.unlock();
+}
+```
+
+This `while` loop protects against **spurious wakeups** (threads can wake up for no reason).
+
+### 2. `signal()` – “Wake up ONE waiting thread”
+
+**What it does**:
+- Wakes up **only one** thread that is currently waiting on this exact `Condition`.
+- If multiple threads are waiting, it chooses **one** (usually the longest-waiting one, but not guaranteed).
+- The woken thread does **not** run immediately — it has to wait until it can re-acquire the lock.
+
+**Use when**:
+- You only need to notify **one** consumer/producer (very common in Producer-Consumer).
+
+### 3. `signalAll()` – “Wake up ALL waiting threads”
+
+**What it does**:
+- Wakes up **every** thread that is waiting on this `Condition`.
+- All woken threads compete to re-acquire the lock (only one can hold it at a time).
+
+**Use when**:
+- The condition change affects **all** waiting threads (e.g., “buffer is now empty”, “shutdown signal”, etc.).
+
+### Quick Comparison Table
+
+| Method          | Wakes up          | When to use                              | Analogy (old way)     |
+|-----------------|-------------------|------------------------------------------|-----------------------|
+| `await()`       | Current thread sleeps | Thread is waiting for a condition       | `wait()`              |
+| `signal()`      | **One** thread    | Only one thread needs to act (most common) | `notify()`            |
+| `signalAll()`   | **All** threads   | Every waiting thread should check again | `notifyAll()`         |
+
+### Real Example from Producer-Consumer (same code we used earlier)
+
+```java
+// Inside SharedBuffer class
+
+public void produce(int item) throws InterruptedException {
+    lock.lock();
+    try {
+        while (buffer.size() == capacity) {           // buffer full
+            notFull.await();                          // ← Producer waits
+        }
+        buffer.add(item);
+        notEmpty.signal();                            // ← Wake ONE consumer
+    } finally {
+        lock.unlock();
+    }
+}
+
+public int consume() throws InterruptedException {
+    lock.lock();
+    try {
+        while (buffer.isEmpty()) {                    // buffer empty
+            notEmpty.await();                         // ← Consumer waits
+        }
+        int item = buffer.poll();
+        notFull.signal();                             // ← Wake ONE producer
+        return item;
+    } finally {
+        lock.unlock();
+    }
+}
+```
+
+**Why `signal()` and not `signalAll()` here?**  
+Because only **one** producer or consumer needs to be woken up at a time. Using `signalAll()` would be unnecessary and slightly slower.
+
+### Important Rules You Must Follow
+1. Always call these methods **while holding the lock**.
+2. Always check your condition in a `while` loop (never `if`).
+3. Always release the lock in a `finally` block.
+4. `await()` can throw `InterruptedException` → always handle it or declare `throws InterruptedException`.
+
+### Bonus: `await()` with timeout
+```java
+if (!condition.await(2, TimeUnit.SECONDS)) {
+    System.out.println("Timeout! Condition never became true.");
+}
+```
+
+Would you like me to:
+- Show a full Producer-Consumer example again with extra comments on these three methods?
+- Show an example using `signalAll()` (e.g., for shutdown)?
+- Show the difference between `signal()` and `signalAll()` with multiple consumers?
+
+Just tell me which one you want next!
