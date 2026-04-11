@@ -1,0 +1,162 @@
+Here's a **clean, modern solution** to the **Producer-Consumer problem** using **`ReentrantLock`** + **`Condition`** in Java.
+
+This version uses:
+- Separate classes (no inner classes)
+- `ReentrantLock` instead of `synchronized`
+- `Condition` for precise waiting (better than `wait()`/`notify()`)
+- Lambda expressions for Producer and Consumer (as per our previous discussion)
+
+### 1. `SharedBuffer.java` (Shared Resource)
+
+```java
+import java.util.LinkedList;
+import java.util.Queue;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.ReentrantLock;
+
+public class SharedBuffer {
+
+    private final Queue<Integer> buffer = new LinkedList<>();
+    private final int capacity;
+
+    private final ReentrantLock lock = new ReentrantLock();
+    private final Condition notFull = lock.newCondition();   // Producer waits here
+    private final Condition notEmpty = lock.newCondition();  // Consumer waits here
+
+    public SharedBuffer(int capacity) {
+        this.capacity = capacity;
+    }
+
+    // Producer calls this
+    public void produce(int item) throws InterruptedException {
+        lock.lock();
+        try {
+            // Wait while buffer is full
+            while (buffer.size() == capacity) {
+                System.out.println("Buffer is full. Producer waiting...");
+                notFull.await();
+            }
+
+            buffer.add(item);
+            System.out.println("Produced: " + item + " | Buffer size: " + buffer.size());
+
+            // Signal consumer that buffer is not empty
+            notEmpty.signal();
+
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    // Consumer calls this
+    public int consume() throws InterruptedException {
+        lock.lock();
+        try {
+            // Wait while buffer is empty
+            while (buffer.isEmpty()) {
+                System.out.println("Buffer is empty. Consumer waiting...");
+                notEmpty.await();
+            }
+
+            int item = buffer.poll();
+            System.out.println("Consumed: " + item + " | Buffer size: " + buffer.size());
+
+            // Signal producer that buffer has space
+            notFull.signal();
+
+            return item;
+
+        } finally {
+            lock.unlock();
+        }
+    }
+}
+```
+
+### 2. `ProducerConsumerDemo.java` (Main Class with Lambdas)
+
+```java
+import java.util.concurrent.locks.ReentrantLock;
+
+public class ProducerConsumerDemo {
+
+    public static void main(String[] args) {
+
+        SharedBuffer buffer = new SharedBuffer(5);   // Buffer capacity = 5
+
+        // Producer using Lambda
+        Runnable producer = () -> {
+            try {
+                for (int i = 1; i <= 10; i++) {
+                    buffer.produce(i);
+                    Thread.sleep(300);   // Simulate production time
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        };
+
+        // Consumer using Lambda
+        Runnable consumer = () -> {
+            try {
+                for (int i = 1; i <= 10; i++) {
+                    buffer.consume();
+                    Thread.sleep(500);   // Simulate consumption time (slower than producer)
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        };
+
+        Thread producerThread = new Thread(producer, "Producer");
+        Thread consumerThread = new Thread(consumer, "Consumer");
+
+        producerThread.start();
+        consumerThread.start();
+
+        // Wait for both threads to finish
+        try {
+            producerThread.join();
+            consumerThread.join();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+
+        System.out.println("\nProducer-Consumer problem solved successfully!");
+    }
+}
+```
+
+### How It Works (Key Points)
+
+- **`ReentrantLock`** provides mutual exclusion.
+- Two **`Condition`** objects:
+  - `notFull` → Producer waits when buffer is full.
+  - `notEmpty` → Consumer waits when buffer is empty.
+- `signal()` is used instead of `notify()` — it's more efficient because we signal the exact condition.
+- `while` loops are used (not `if`) to handle **spurious wakeups**.
+- Lambdas keep the code concise and modern.
+- Proper `finally` block ensures lock is always released.
+
+### Advantages Over Traditional `synchronized` + `wait/notify`
+- More flexible (you can have multiple conditions).
+- Supports fairness (`new ReentrantLock(true)`).
+- Better control and readability.
+- `await()` can be interrupted easily.
+
+### How to Run
+1. Create two files: `SharedBuffer.java` and `ProducerConsumerDemo.java`
+2. Compile & run:
+   ```bash
+   javac *.java
+   java ProducerConsumerDemo
+   ```
+
+Would you like me to modify it with any of these features?
+- Multiple producers and multiple consumers
+- Using `tryLock()` with timeout
+- Fair lock version
+- Using `ExecutorService` instead of raw Threads
+- Adding a timeout or shutdown mechanism
+
+Just tell me your preference!
