@@ -1,0 +1,96 @@
+`lock.newCondition()` is a method provided by the **`ReentrantLock`** class (and any implementation of the `Lock` interface) in Java.
+
+### What it does
+It **creates and returns a new `Condition` object** that is tightly associated with the current `ReentrantLock`.
+
+Think of a `Condition` as a **separate wait queue** (or "condition variable") that allows threads to:
+- Wait efficiently until a specific logical condition becomes true.
+- Be woken up (signaled) by another thread when that condition changes.
+
+You can create **multiple** `Condition` objects from the **same** `ReentrantLock`. This gives you much finer control than the traditional `synchronized` + `wait()` / `notify()` mechanism (which only has **one** wait set per object).
+
+### Why use `newCondition()`?
+- **Multiple independent wait sets** — e.g., one for "buffer not full" and another for "buffer not empty" in Producer-Consumer.
+- Better readability and maintainability.
+- Supports `await()` with timeout, interruptible waiting, and `signal()` / `signalAll()`.
+- Works perfectly with `ReentrantLock`'s reentrancy and fairness features.
+
+### Key Rules When Using Condition
+- You **must** hold the lock (`lock.lock()`) before calling `await()`, `signal()`, or `signalAll()` on the `Condition`. Otherwise, `IllegalMonitorStateException` is thrown.
+- When a thread calls `condition.await()`:
+  - It **releases** the lock automatically.
+  - It waits until another thread calls `signal()` or `signalAll()` on the same condition.
+  - When it wakes up, it **re-acquires** the lock automatically before returning from `await()`.
+- Always use `while` loop when checking the condition (to handle spurious wakeups):
+  ```java
+  while (!conditionIsTrue) {
+      condition.await();
+  }
+  ```
+
+### Simple Example
+
+```java
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.concurrent.locks.Condition;
+
+public class ConditionExample {
+
+    private final ReentrantLock lock = new ReentrantLock();
+    private final Condition dataAvailable = lock.newCondition();  // Create condition
+
+    private boolean hasData = false;
+
+    public void waitForData() throws InterruptedException {
+        lock.lock();
+        try {
+            while (!hasData) {
+                System.out.println(Thread.currentThread().getName() + " is waiting for data...");
+                dataAvailable.await();   // Wait + release lock
+            }
+            System.out.println(Thread.currentThread().getName() + " got the data!");
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    public void produceData() {
+        lock.lock();
+        try {
+            hasData = true;
+            System.out.println(Thread.currentThread().getName() + " produced data.");
+            dataAvailable.signal();   // Wake up one waiting thread
+        } finally {
+            lock.unlock();
+        }
+    }
+}
+```
+
+### In the Producer-Consumer Example I gave earlier
+```java
+private final Condition notFull  = lock.newCondition();  // Producer waits here
+private final Condition notEmpty = lock.newCondition();  // Consumer waits here
+```
+
+- Producer uses `notFull.await()` when buffer is full, and `notEmpty.signal()` after producing.
+- Consumer uses `notEmpty.await()` when buffer is empty, and `notFull.signal()` after consuming.
+
+This is cleaner and more powerful than using a single `wait()` / `notifyAll()` on the shared object.
+
+### Summary Table
+
+| Feature                    | `synchronized` + `wait/notify` | `ReentrantLock` + `Condition`          |
+|---------------------------|--------------------------------|----------------------------------------|
+| Number of wait sets       | Only 1 per object             | Multiple (one per `newCondition()`)   |
+| Control & Flexibility     | Limited                       | High (signal specific condition)      |
+| Interruptible waiting     | Yes (but tricky)              | Clean (`await()` throws InterruptedException) |
+| Timeout support           | No                            | Yes (`await(long, TimeUnit)`)         |
+| Recommended for new code  | Legacy                        | Preferred                             |
+
+Would you like me to:
+- Show a full Producer-Consumer again with extra comments on `newCondition()`?
+- Demonstrate using multiple `Condition` objects in one class?
+- Show `await()` with timeout or `signalAll()`?
+
+Just tell me what would help you most!
