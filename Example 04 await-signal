@@ -1,0 +1,103 @@
+In Java multithreading, await() and signal() are methods of the Condition interface,
+introduced in java.util.concurrent.locks. They work with Lock objects as a more flexible
+and powerful alternative to the traditional wait() / notify() mechanism.
+
+Key Differences from wait() / notify()
+
+Feature wait() / notify() await() / signal()
+Associated with synchronized blocks / Object monitor Lock objects & Condition
+Multiple wait sets One per monitor Multiple Conditions per lock
+Interruptibility wait() can be interrupted await() has interruptible & uninterruptible variants
+Timeout support wait(long timeout) await(long time, TimeUnit unit)
+Fairness No Depends on Lock implementation (e.g., ReentrantLock(true))
+
+Basic Usage Pattern
+
+```java
+Lock lock = new ReentrantLock();
+Condition condition = lock.newCondition();
+
+// Thread 1 (waiter)
+lock.lock();
+try {
+    while (!conditionMet()) {
+        condition.await();  // releases lock and waits
+    }
+    // proceed
+} finally {
+    lock.unlock();
+}
+
+// Thread 2 (signaler)
+lock.lock();
+try {
+    // change state
+    condition.signal();   // or signalAll()
+} finally {
+    lock.unlock();
+}
+```
+
+Important Rules
+
+1. Always call await()/signal() while holding the associated Lock – otherwise 
+IllegalMonitorStateException.
+2. Always use a loop around await() to guard against spurious wakeups.
+3. signal() wakes one waiting thread; signalAll() wakes all.
+4. await() releases the lock atomically and reacquires it before returning.
+
+Example: Bounded Queue
+
+```java
+public class BoundedQueue<T> {
+    private final Queue<T> queue = new LinkedList<>();
+    private final int capacity;
+    private final Lock lock = new ReentrantLock();
+    private final Condition notFull = lock.newCondition();
+    private final Condition notEmpty = lock.newCondition();
+
+    public BoundedQueue(int capacity) { this.capacity = capacity; }
+
+    public void put(T item) throws InterruptedException {
+        lock.lock();
+        try {
+            while (queue.size() == capacity) {
+                notFull.await();
+            }
+            queue.add(item);
+            notEmpty.signal();
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    public T take() throws InterruptedException {
+        lock.lock();
+        try {
+            while (queue.isEmpty()) {
+                notEmpty.await();
+            }
+            T item = queue.poll();
+            notFull.signal();
+            return item;
+        } finally {
+            lock.unlock();
+        }
+    }
+}
+```
+
+Advanced Variants
+
+· awaitUninterruptibly() – ignores interruption until after waiting.
+· await(long time, TimeUnit unit) – returns false if timeout occurs.
+· awaitUntil(Date deadline) – waits until an absolute point in time.
+
+When to Use await()/signal() over wait()/notify()?
+
+· Need multiple wait queues (e.g., separate conditions for “not full” and “not empty”).
+· Want more flexible locking (e.g., ReadWriteLock, try-lock, fair locking).
+· Need interruptible waits with timeout or custom scheduling.
+
+await()/signal() are not a replacement for simple cases, but they give you cleaner, safer,
+and more scalable coordination when you outgrow synchronized.
