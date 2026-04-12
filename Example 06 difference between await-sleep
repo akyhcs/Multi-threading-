@@ -1,0 +1,136 @@
+Thread A calls await():
+
+  lock.lock()
+       │
+       ▼
+  await() ──► RELEASES LOCK ──► waits for signal()
+                                      │
+                                      ▼
+                               signal() received
+                                      │
+                                      ▼
+                          RE‑ACQUIRES LOCK ──► continues
+                                      │
+                                      ▼
+                               lock.unlock()
+
+
+Thread A calls sleep():
+
+  lock.lock()
+       │
+       ▼
+  sleep(5000) ──► STILL HOLDS LOCK ──► zzz...
+                                      │
+                                      ▼
+                          wakes up automatically after 5s
+                                      │
+                                      ▼
+                               lock.unlock()
+
+
+
+
+
+
+
+
+
+Great question! await() (from Condition) and sleep() (from Thread) are both used to pause a thread, but they serve very different purposes.
+
+Key Differences at a Glance
+
+Feature await() sleep()
+Part of java.util.concurrent.locks.Condition java.lang.Thread
+Requires lock Yes – must hold the associated Lock No – can be called anywhere
+Releases lock ✅ Yes (while waiting) ❌ No (holds all locks)
+Resumption Must be signaled by another thread - Automatically after timeout, or interrupted
+Purpose Thread coordination (wait for a condition) - Delaying execution (pause for fixed time)
+Spurious wakeup Possible – must check condition in loop -Not applicable (timeout is exact)
+Interruptibility Interruptible (throws InterruptedException) -Interruptible (throws InterruptedException)
+
+Detailed Explanation
+
+1. Lock Handling (Most Important)
+
+```java
+// await() – releases the lock while waiting
+Lock lock = new ReentrantLock();
+Condition condition = lock.newCondition();
+
+lock.lock();
+try {
+    condition.await();  // Releases lock, other threads can acquire it
+} finally {
+    lock.unlock();
+}
+
+// sleep() – holds all locks while sleeping
+synchronized(lock) {
+    Thread.sleep(5000);  // Lock is held for 5 seconds – others blocked!
+}
+```
+
+2. Resumption Mechanism
+
+· await() – Must be signaled by another thread (or timeout/interrupt). Designed for producer-consumer scenarios.
+· sleep() – Resumes automatically after the specified time, regardless of other threads.
+
+```java
+// await example – thread B must signal thread A
+// Thread A
+lock.lock();
+condition.await();  // waits indefinitely until signaled
+
+// Thread B
+lock.lock();
+condition.signal(); // wakes Thread A
+lock.unlock();
+
+// sleep example – just pauses
+Thread.sleep(1000); // guaranteed to resume after ~1 second (unless interrupted)
+```
+
+3. Use Cases
+
+Use await() when... Use sleep() when...
+A thread must wait for another thread to change a condition (e.g., queue empty → wait for producer) You simply want to pause execution for a fixed time (e.g., retry delay, animation frame)
+You need efficient waiting without holding locks You don't need to coordinate with other threads
+You have multiple condition queues (e.g., notFull, notEmpty) You don't care about lock contention
+
+Common Pitfalls
+
+· Calling await() without holding the lock → IllegalMonitorStateException.
+· Using sleep() in a synchronized block → blocks other threads unnecessarily (often a performance bug).
+· Forgetting to check condition in a loop after await() → spurious wakeup leads to bugs.
+· Using sleep() for coordination → fragile and inefficient (better to use wait/notify or await/signal).
+
+Example: Wrong vs Right
+
+```java
+// ❌ WRONG – using sleep for coordination
+while (queue.isEmpty()) {
+    Thread.sleep(100);  // wastes CPU, slow response, holds locks
+}
+
+// ✅ RIGHT – using await
+lock.lock();
+try {
+    while (queue.isEmpty()) {
+        notEmpty.await();  // releases lock, wakes instantly when signaled
+    }
+} finally {
+    lock.unlock();
+}
+```
+
+Analogy
+
+· sleep() = Taking a power nap for a fixed time. You don't care what others do; you'll wake up exactly after X minutes.
+· await() = Waiting for a text message (signal). You can't proceed until someone tells you something. You might check your phone every few seconds, but you don't hold resources while waiting.
+
+Summary
+
+sleep() is for time-based delays – it holds locks, doesn't care about other threads.
+await() is for condition-based coordination – it releases locks, relies on signals from other threads.
+Choosing the wrong one leads to deadlocks, poor performance, or brittle code.
