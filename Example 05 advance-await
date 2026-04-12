@@ -1,0 +1,127 @@
+Sure! Here's a concrete example demonstrating the smart variants of await() — specifically
+await(long timeout, TimeUnit unit) and awaitUninterruptibly().
+
+Scenario: Task Processor with Timeout
+
+We have a worker thread that waits for a task. If no task arrives within 2 seconds, 
+it logs a timeout and continues (instead of blocking forever). We also show awaitUninterruptibly() 
+for critical cleanup sections.
+
+```java
+import java.util.concurrent.locks.*;
+import java.util.concurrent.TimeUnit;
+
+public class SmartAwaitExample {
+    private final Lock lock = new ReentrantLock();
+    private final Condition taskAvailable = lock.newCondition();
+    private String pendingTask = null;
+    private boolean shutdown = false;
+
+    // Producer: sets a task and signals
+    public void submitTask(String task) {
+        lock.lock();
+        try {
+            this.pendingTask = task;
+            taskAvailable.signal();  // wakes one waiter
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    // Consumer: waits for a task with timeout (smart variant)
+    public void processTaskWithTimeout() throws InterruptedException {
+        lock.lock();
+        try {
+            while (pendingTask == null && !shutdown) {
+                // Wait at most 2 seconds
+                boolean received = taskAvailable.await(2, TimeUnit.SECONDS);
+                if (!received && pendingTask == null) {
+                    System.out.println(Thread.currentThread().getName() + 
+                                       " timed out – no task received.");
+                    return;
+                }
+            }
+            if (pendingTask != null) {
+                System.out.println("Processing: " + pendingTask);
+                pendingTask = null;
+            }
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    // Demonstrates awaitUninterruptibly() – ignores interruption during wait
+    public void waitUninterruptiblyDemo() {
+        lock.lock();
+        try {
+            System.out.println("Waiting uninterruptibly...");
+            // Even if thread is interrupted, it will keep waiting until signalled
+            taskAvailable.awaitUninterruptibly();
+            System.out.println("Woken up!");
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    public void shutdown() {
+        lock.lock();
+        try {
+            shutdown = true;
+            taskAvailable.signalAll();
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    public static void main(String[] args) throws InterruptedException {
+        SmartAwaitExample example = new SmartAwaitExample();
+
+        // Thread that waits with timeout
+        Thread worker = new Thread(() -> {
+            try {
+                example.processTaskWithTimeout();  // will timeout
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }, "Worker-Timeout");
+
+        worker.start();
+        worker.join();  // waits for timeout thread to finish
+
+        // Now demonstrate awaitUninterruptibly
+        Thread uninterruptibleWorker = new Thread(() -> {
+            example.waitUninterruptiblyDemo();
+        });
+        uninterruptibleWorker.start();
+
+        // Interrupt immediately – but awaitUninterruptibly ignores it
+        uninterruptibleWorker.interrupt();
+        Thread.sleep(500);  // give it time to print "Waiting uninterruptibly..."
+
+        // Finally signal to wake it up
+        example.submitTask("Wake-up task");
+    }
+}
+```
+
+Expected Output (approximate):
+
+```
+Worker-Timeout timed out – no task received.
+Waiting uninterruptibly...
+Woken up!
+```
+
+Key Points of Smart Variants
+
+Method Behavior
+await(long time, TimeUnit unit) Returns false if timeout occurs before signal. Never spuriously returns true – you still need a loop condition.
+awaitUninterruptibly() Ignores interruption while waiting. The interrupt flag is preserved, but the thread won't exit the wait until signalled. Useful for critical sections where you cannot react to interruption.
+awaitUntil(Date deadline) Similar to timeout, but absolute deadline. E.g., awaitUntil(new Date(System.currentTimeMillis() + 2000))
+
+When to Use These Variants
+
+· Timeout – to avoid indefinite blocking (e.g., health checks, UI responsiveness).
+· Uninterruptible wait – in shutdown hooks or cleanup logic where you must complete the wait before proceeding, regardless of interruption.
+
+Always remember to re-check the condition in a loop even when using timeouts – spurious wakeups are still possible (though timeout returns false only on actual timeout).
